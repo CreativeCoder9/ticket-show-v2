@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, roles_required, auth_required, hash_password, permissions_required
 from flask_security.models import fsqla_v3 as fsqla
+from flask_caching import Cache
 
 
 app = Flask(__name__,
@@ -29,6 +30,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ticketshow.db'
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", 'pf9Wkove4IKEAXvy-cQkeDPhv9Cb3Ag-wyJILbq_dFw')
 app.config['DEBUG'] = True
 app.config['SECURITY_PASSWORD_SALT'] = os.environ.get("SECURITY_PASSWORD_SALT", '146585145368132386173505678016728509634')
+app.config['CACHE_TYPE'] = "SimpleCache"
+app.config['CACHE_DEFAULT_TIMEOUT'] = 300
+# app.config['SECURITY_UNAUTHORIZED_VIEW'] = unauthorized_handler
+
+
 
 #initializing Database
 db = SQLAlchemy(app)
@@ -98,7 +104,7 @@ class Bookings(db.Model):
 
 # Setup Flask-Security
 user_datastore = SQLAlchemyUserDatastore(db, User, Role)
-app.security = Security(app, user_datastore)
+app.security = Security(app, user_datastore, unauthorized_handler=unauthorized_handler)
 
 
 # Creating the database
