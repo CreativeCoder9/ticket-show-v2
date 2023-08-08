@@ -8,9 +8,7 @@ from flask_security.models import fsqla_v3 as fsqla
 from flask_caching import Cache
 
 
-app = Flask(__name__,
-            static_folder='static'  # Name of directory for static files
-            )
+app = Flask(__name__)
 
 # Variables & Data
 error_msg = "Unexpected error occurred!"
@@ -25,7 +23,8 @@ def unauthenticated_handler():
     return jsonify({'error': 'Unauthenticated access'}), 401
 
 # Upload Directory
-UPLOAD_FOLDER = 'static/uploads'
+STATIC_FOLDER = os.path.join(app.root_path, 'static')
+UPLOAD_FOLDER = os.path.join(app.root_path, 'static/uploads')
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 
 
@@ -42,6 +41,7 @@ def custom_cache_key():
     return f'{method}:{path}?{query_string}'
 
 # App config
+app.config['STATIC_FOLDER'] = STATIC_FOLDER
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ticketshow.db'
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", 'pf9Wkove4IKEAXvy-cQkeDPhv9Cb3Ag-wyJILbq_dFw')
@@ -168,13 +168,6 @@ def method_not_allowed(error):
 def page_not_found(error):
     return jsonify({"error": "Not Found"}), 404
 
-# Check if the request content type is application/json
-@app.before_request
-def before_request():
-    if request.method in ["GET","POST", "PUT", "PATCH", "DELETE"]:
-        if not request.is_json and request.endpoint != "/static/uploads":
-            return jsonify({'status':"error",'message': 'Only application/json content type is allowed.'}), 415
-
 #get link to uploaded file utility api.
 @app.route('/api/uploads/geturl', methods=['GET','POST'])
 def upload_and_geturl():
@@ -198,12 +191,12 @@ def upload_and_geturl():
 
 
 @app.route('/', methods=['GET','POST'])
-@auth_required("token")
-@cache.memoize(timeout=60)
+# @auth_required("token")
+# @cache.memoize(timeout=60)
 # @roles_required('admin')
 # @permissions_required('user-read')
-def hello_world():
-    return 'Hello World!'
+def home():
+    return render_template('index.html')
 
 # User Registration
 @app.route('/auth/register', methods=['GET','POST'])
@@ -232,36 +225,38 @@ def register():
 # Creating a Theatre
 @app.route('/api/theatres', methods=['GET','POST'])
 # @cache.memoize(timeout=60)
-@auth_required("token")
 def create_theatre():
-  if request.method == 'GET':
-    #returns all the theatres
-    try:
-      theatres = Theatre.query.all()
-      theatres_list = []
-      for theatre in theatres:
-        theatres_list.append({'theatre_id': theatre.theatre_id, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location, 'theatre_capacity': theatre.theatre_capacity, 'theatre_img': theatre.theatre_img})
-      return jsonify({'status': 'success', 'message': 'Theatres fetched successfully!', 'theatres': theatres_list}), 200
-    except Exception as e:
-      print(e)
-      return jsonify({'status': 'error', 'message': str(e)}), 500
+    if request.method == 'GET':
+      #returns all the theatres
+      try:
+        theatres = Theatre.query.all()
+        theatres_list = []
+        for theatre in theatres:
+          theatres_list.append({'theatre_id': theatre.theatre_id, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location, 'theatre_capacity': theatre.theatre_capacity, 'theatre_img': theatre.theatre_img})
+        return jsonify({'status': 'success', 'message': 'Theatres fetched successfully!', 'theatres': theatres_list}), 200
+      except Exception as e:
+        print(e)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
     
 
-  #Creates a new theatre
-  if request.method == 'POST':
-    try:
-      response = request.get_json()
-      theatre_name = response['theatre_name']
-      theatre_location = response['theatre_location']
-      theatre_capacity = response['theatre_capacity']
-      theatre_img = response['theatre_img']
-      theatre = Theatre(theatre_name=theatre_name, theatre_location=theatre_location, theatre_capacity=theatre_capacity, theatre_img=theatre_img)
-      db.session.add(theatre)
-      db.session.commit()
-      return jsonify({'status': 'success', 'message': 'Theatre created successfully!'}), 200
-    except Exception as e:
-      print(e)
-      return jsonify({'status': 'error', 'message': str(e)}), 500
+    #Creates a new theatre
+    if request.method == 'POST' and current_user.is_authenticated:
+      try:
+        response = request.get_json()
+        theatre_name = response['theatre_name']
+        theatre_location = response['theatre_location']
+        theatre_capacity = response['theatre_capacity']
+        theatre_img = response['theatre_img']
+        theatre = Theatre(theatre_name=theatre_name, theatre_location=theatre_location, theatre_capacity=theatre_capacity, theatre_img=theatre_img)
+        db.session.add(theatre)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Theatre created successfully!'}), 200
+      except Exception as e:
+        print(e)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    else:
+      return jsonify({'status': 'error', 'message': 'You are not authorized to access this resource!'}), 403
   
   #sample request for creating a theatre
   # {"theatre_name": "PVR", "theatre_location": "Bangalore", "theatre_capacity": 100, "theatre_img": "https://www.pvrcinemas.com/images/pvr-logo.png"}
@@ -312,7 +307,6 @@ def update_theatre(theatre_id):
   
 #Get all shows & Create a show
 @app.route('/api/shows', methods=['GET','POST'])
-@auth_required("token")
 def show():
   if request.method == 'GET':
     #returns all the shows
@@ -327,7 +321,7 @@ def show():
       return jsonify({'status': 'error', 'message': str(e)}), 500
 
   #Creates a new show
-  if request.method == 'POST':
+  elif request.method == 'POST' and current_user.is_authenticated:
     try:
       response = request.get_json()
       show_name = response['show_name']
@@ -345,6 +339,8 @@ def show():
     except Exception as e:
       print(e)
       return jsonify({'status': 'error', 'message': str(e)}), 500
+  else:
+    return jsonify({'status': 'error', 'message': 'You are not authorized to access this resource!'}), 403
   
 #sample request for creating a show
 # {"show_name": "Avengers", "show_rating": 4.5, "show_price": 500, "show_starting_time": "10:00 AM", "show_ending_time": "12:00 PM", "show_tags": "Action, Adventure", "show_img": "https://upload.wikimedia.org/wikipedia/en/0/0d/Avengers_End" }
