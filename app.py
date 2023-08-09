@@ -232,7 +232,12 @@ def create_theatre():
         theatres = Theatre.query.all()
         theatres_list = []
         for theatre in theatres:
-          theatres_list.append({'theatre_id': theatre.theatre_id, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location, 'theatre_capacity': theatre.theatre_capacity, 'theatre_img': theatre.theatre_img})
+          shows = theatre.shows
+          #serialize shows
+          shows_list = []
+          for show in shows:
+            shows_list.append({'show_id': show.show_id, 'show_name': show.show_name, 'show_rating': show.show_rating, 'show_price': show.show_price, 'show_starting_time': show.show_starting_time, 'show_ending_time': show.show_ending_time, 'show_tags': show.show_tags, 'show_img': show.show_img, 'show_theatre': show.show_theatre})
+          theatres_list.append({'theatre_id': theatre.theatre_id, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location, 'theatre_capacity': theatre.theatre_capacity, 'theatre_img': theatre.theatre_img, 'shows': shows_list})
         return jsonify({'status': 'success', 'message': 'Theatres fetched successfully!', 'theatres': theatres_list}), 200
       except Exception as e:
         print(e)

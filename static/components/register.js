@@ -23,6 +23,31 @@ const register = {
         </div>
     </div>
     </nav>
+
+  <div id="home-page" class="container min-vh-100 shadow p-5" style="margin-top:150px;">
+  <div class="col-8">
+    <h1 class="fw-bold" style="margin-top:20px;">Welcome to the Show :)</h1>
+    <h5>Book your shows & share your reviews, because they matter....</h5>
+  </div>
+  <div id = "signup-form" class="col -8 container mt-3 mb-5">
+      <div>
+        <form action="" method="POST">
+            <div class="form-group">
+              <label for="email">Email address</label>
+              <input name="email" type="email" class="form-control" id="email" required>
+              <small id="emailHelp" class="form-text text-muted">We'll never share your email with anyone else.</small>
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input name="password" type="password" class="form-control" id="password" required>
+            </div>
+            <button id="registration-button" type="submit" class="btn btn-primary mb-2">Sign up</button> 
+        </form>
+        <a href="/login">Already have an account? login here.</a>
+      </div>
+    </div>
+  </div>
+  </div>
     </div>`,
     data: function() {
 

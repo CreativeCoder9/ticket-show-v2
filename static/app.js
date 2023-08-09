@@ -2,12 +2,14 @@ import home from './components/home.js'
 import profile from './components/profile.js'
 import login from './components/login.js'
 import register from './components/register.js'
+import dashboard from './components/dashboard.js'
 
 const routes = [
   { path: '/', component: home, props:true },
   { path: '/profile/:id', component: profile },
   { path: '/login', component: login },
   { path: '/register', component: register },
+  { path: '/dashboard', component: dashboard },
 ]
 
 const router = new VueRouter({

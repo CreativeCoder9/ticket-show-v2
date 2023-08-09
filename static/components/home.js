@@ -24,10 +24,10 @@ const home = {
     </div>
     </nav>
 
-    <header class="pt-0 mt-0">
+    <header>
     <div class="container">
         <div class="row">
-            <div class="col-md-8 text-center text-md-start mx-auto" style="margin-top: 51px;">
+            <div class="col-md-8 text-center text-md-start mx-auto" style="margin-top: 125px;">
                 <div class="text-center">
                     <h1 class="display-4 fw-bold mb-5 pt-0 mt-0">Tickets for your&nbsp;<span class="underline">Shows</span>.</h1>
                     <p class="fs-5 text-muted mb-5" style="margin-top: -19px;">Find, browse &amp; book shows in your favourite venues&nbsp;</p>
