@@ -1,5 +1,5 @@
 import os, random, requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
@@ -54,10 +54,12 @@ app.config['CACHE_REDIS_PORT'] = 18499
 app.config['CACHE_REDIS_PASSWORD'] ="10HWC9CukcVzonjPMQGNdoTfLY9GIApy"
 app.config['WTF_CSRF_ENABLED'] = False
 app.config['SECURITY_TOKEN_AUTHENTICATION_HEADER'] = 'Authorization'
-app.config['SECURITY_TOKEN_MAX_AGE'] = 86400
+# app.config['SECURITY_TOKEN_MAX_AGE'] = 86400
 app.config['SECURITY_URL_PREFIX'] = '/auth'
 app.config['CACHE_KEY_PREFIX'] = custom_cache_key
-
+# app.config['REMEMBER_COOKIE_DURATION'] = timedelta(seconds=0)
+#set seession expire in 1 second
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=1)
 
 
 
@@ -172,22 +174,16 @@ def page_not_found(error):
 @app.route('/api/uploads/geturl', methods=['GET','POST'])
 def upload_and_geturl():
   if request.method == 'POST':
-    try:
-      # check if the post request has the file part
-      if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No file part'}), 400
-      file = request.files['file']
-      # if user does not select file, browser also
-      # submit an empty part without filename. We need to handle this.
-      if file.filename == '':
-        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
-      if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        return jsonify({'status': 'success', 'message': 'File uploaded successfully!', 'file_url': url_for('uploaded_file', filename=filename)}), 200
-    except Exception as e:
-      print(e)
-      return jsonify({'status': 'error', 'message': str(e)}), 500
+    file = request.files['file']
+    print(file)
+    filename = secure_filename(file.filename)
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    file_url = url_for('static', filename=f'uploads/{filename}', _external=True)
+    return jsonify({'status': 'success', 'message': 'File uploaded successfully!', 'file_url':file_url }), 200
+  
+  if request.method == 'GET':
+    return jsonify({'status': 'success', 'message': 'Send a POST request with file to upload!'}), 200
+  
 
 
 @app.route('/', methods=['GET','POST'])
@@ -222,18 +218,16 @@ def register():
    
 
 
-# Creating a Theatre
+# Creating and Getting all theatres
 @app.route('/api/theatres', methods=['GET','POST'])
 # @cache.memoize(timeout=60)
 def create_theatre():
     if request.method == 'GET':
-      #returns all the theatres
       try:
         theatres = Theatre.query.all()
         theatres_list = []
         for theatre in theatres:
           shows = theatre.shows
-          #serialize shows
           shows_list = []
           for show in shows:
             shows_list.append({'show_id': show.show_id, 'show_name': show.show_name, 'show_rating': show.show_rating, 'show_price': show.show_price, 'show_starting_time': show.show_starting_time, 'show_ending_time': show.show_ending_time, 'show_tags': show.show_tags, 'show_img': show.show_img, 'show_theatre': show.show_theatre})
@@ -242,9 +236,6 @@ def create_theatre():
       except Exception as e:
         print(e)
         return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    
-
     #Creates a new theatre
     if request.method == 'POST' and current_user.is_authenticated:
       try:
@@ -271,14 +262,20 @@ def create_theatre():
 @auth_required("token")
 def update_theatre(theatre_id):
 
-  #returns a theatre
+  #returns a theatre with shows list
   if request.method == 'GET':
     try:
       theatre = Theatre.query.filter_by(theatre_id=theatre_id).first()
-      return jsonify({'status': 'success', 'message': 'Theatre fetched successfully!', 'theatre': {'theatre_id': theatre.theatre_id, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location, 'theatre_capacity': theatre.theatre_capacity, 'theatre_img': theatre.theatre_img}}), 200
+      shows = Show.query.filter_by(show_theatre=theatre_id).all()
+      #serialize shows
+      shows_list = []
+      for show in shows:
+        shows_list.append({'show_id': show.show_id, 'show_name': show.show_name, 'show_rating': show.show_rating, 'show_price': show.show_price, 'show_starting_time': show.show_starting_time, 'show_ending_time': show.show_ending_time, 'show_tags': show.show_tags, 'show_img': show.show_img, 'show_theatre': show.show_theatre})
+      return jsonify({'status': 'success', 'message': 'Theatre fetched successfully!', 'theatre': {'theatre_id': theatre.theatre_id, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location, 'theatre_capacity': theatre.theatre_capacity, 'theatre_img': theatre.theatre_img, 'shows': shows_list}}), 200
     except Exception as e:
       print(e)
-      return jsonify({'status': 'error', 'message': str(e)}, 500)
+      return jsonify({'status': 'error', 'message': 'Theatre doesnot exist!'}), 500
+  
     
   #Updates a theatre
   if request.method == 'PUT':
@@ -292,7 +289,8 @@ def update_theatre(theatre_id):
       theatre.theatre_name = theatre_name
       theatre.theatre_location = theatre_location
       theatre.theatre_capacity = theatre_capacity
-      theatre.theatre_img = theatre_img
+      if theatre_img !='':
+        theatre.theatre_img = theatre_img
       db.session.commit()
       return jsonify({'status': 'success', 'message': 'Theatre updated successfully!'}), 200
     except Exception as e:
@@ -326,7 +324,7 @@ def show():
       return jsonify({'status': 'error', 'message': str(e)}), 500
 
   #Creates a new show
-  elif request.method == 'POST' and current_user.is_authenticated:
+  elif request.method == 'POST':
     try:
       response = request.get_json()
       show_name = response['show_name']
@@ -337,6 +335,12 @@ def show():
       show_tags = response['show_tags']
       show_img = response['show_img']
       show_theatre = response['show_theatre']
+      #check if theatre exists
+      try:
+        theatre = Theatre.query.get_or_404(show_theatre)
+      except Exception as e:
+        print(e)
+        return jsonify({'status': 'error', 'message': 'Theatre does not exist!'}), 400
       show = Show(show_name=show_name, show_rating=show_rating, show_price=show_price, show_starting_time=show_starting_time, show_ending_time=show_ending_time, show_tags=show_tags, show_img=show_img, show_theatre=show_theatre)
       db.session.add(show)
       db.session.commit()
@@ -350,7 +354,7 @@ def show():
 #sample request for creating a show
 # {"show_name": "Avengers", "show_rating": 4.5, "show_price": 500, "show_starting_time": "10:00 AM", "show_ending_time": "12:00 PM", "show_tags": "Action, Adventure", "show_img": "https://upload.wikimedia.org/wikipedia/en/0/0d/Avengers_End" }
 
-#Create, update & delete a show
+#Get, update & delete a show
 @app.route('/api/shows/<int:show_id>', methods=['GET','PUT','DELETE'])
 @auth_required("token")
 def update_show(show_id):
@@ -382,7 +386,8 @@ def update_show(show_id):
       show.show_starting_time = show_starting_time
       show.show_ending_time = show_ending_time
       show.show_tags = show_tags
-      show.show_img = show_img
+      if show_img !='':
+        show.show_img = show_img
       show.show_theatre = show_theatre
       db.session.commit()
       return jsonify({'status': 'success', 'message': 'Show updated successfully!'}), 200
@@ -413,7 +418,9 @@ def booking():
       bookings = Bookings.query.all()
       bookings_list = []
       for booking in bookings:
-        bookings_list.append({'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id})
+        show = Show.query.get_or_404(booking.booking_show_id)
+        theatre = Theatre.query.get_or_404(show.show_theatre)
+        bookings_list.append({'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id, 'show_name':show.show_name, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location})
       return jsonify({'status': 'success', 'message': 'Bookings fetched successfully!', 'bookings': bookings_list}), 200
     except Exception as e:
       print(e)
@@ -424,27 +431,31 @@ def booking():
     try:
       response = request.get_json()
       booking_user_id = current_user.id
-      num_bookings = response['num_bookings']
+      num_bookings = int(response['num_bookings'])
       booking_show_id = response['booking_show_id']
       show = Show.query.get_or_404(booking_show_id)
-      theatre = show.show_theatre
+      theatre = Theatre.query.get_or_404(show.show_theatre)
       capacity = theatre.theatre_capacity
       num_shows = len(theatre.shows)
       seats = capacity // num_shows
-      num_bookings = total_bookings = db.session.query(db.func.sum(Bookings.num_bookings)).\
+      total_bookings = db.session.query(db.func.sum(Bookings.num_bookings)).\
                 filter(Bookings.booking_show_id == booking_show_id).scalar() or 0
-      available_seats = seats - num_bookings
+      available_seats = int(seats) - total_bookings - num_bookings
 
+      if num_bookings < 1:
+        return jsonify({'status': 'error', 'message': 'Invalid number of bookings!'}), 400
+      
       #Show Housefull
       if available_seats < 0:
-        available_seats = 0
         return jsonify({'status': 'error', 'message': 'No seats available!'}), 400
       ticket_price = show.show_price
 
+      total_bookings = total_bookings + int(num_bookings)
+
       #Dynamic Pricing
-      if num_bookings > seats // 2:
+      if total_bookings > seats // 2:
         ticket_price = ticket_price + 50
-      elif num_bookings > seats * 0.85:
+      elif total_bookings > seats * 0.85:
         ticket_price = ticket_price + 100
       else:
         ticket_price = ticket_price
@@ -463,28 +474,45 @@ def booking():
 #sample request for creating a booking
 # {"booking_user_id": 1, "num_bookings": 2, "booking_show_id": 1}
 
-#Get, update & delete bookings by user
-@app.route('/api/user/bookings/<int:booking_id>', methods=['GET','DELETE'])
-@auth_required("token")
-def update_booking(booking_id):
+#Get current logged in user details
+@app.route('/api/user', methods=['GET','POST'])
+def user_details():
+  if request.method == 'GET' and current_user.is_authenticated:
+    try:
+      user = User.query.filter_by(id=current_user.id).first()
+      return jsonify({'status': 'success', 'message': 'User fetched successfully!', 'user': {'id': user.id, 'user_name': user.user_name}}), 200
+    except Exception as e:
+      print(e)
+      return jsonify({'status': 'error', 'message': str(e)}, 500)
+  else:
+    return jsonify({'status': 'error', 'message': 'You are not authorized to access this resource!'}), 403
 
-  #returns a booking
+
+#Get, update & delete bookings by user
+@app.route('/api/bookings/user/<int:user_id>', methods=['GET','DELETE'])
+@auth_required("token")
+def update_booking(user_id):
+
+  #returns a user's bookings
   if request.method == 'GET':
-    if current_user.id != booking.booking_user_id:
+    if current_user.id != user_id:
       return jsonify({'status': 'error', 'message': 'You are not authorized to access this resource!'}), 403
     try:
-      booking = Bookings.query.filter_by(booking_id=booking_id).first()
-      return jsonify({'status': 'success', 'message': 'Booking fetched successfully!', 'booking': {'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id}}), 200
+      bookings = Bookings.query.filter_by(booking_user_id=user_id).all()
+      bookings_list = []
+      for booking in bookings:
+        bookings_list.append({'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id})
+      return jsonify({'status': 'success', 'message': 'Bookings fetched successfully!', 'bookings': bookings_list}), 200
     except Exception as e:
       print(e)
       return jsonify({'status': 'error', 'message': str(e)}), 500
     
   #Deletes a booking
   if request.method == 'DELETE':
-    if current_user.id != booking.booking_user_id:
-      return jsonify({'status': 'error', 'message': 'You are not authorized to delete this booking!'}), 403
+    if current_user.id != user_id:
+      return jsonify({'status': 'error', 'message': 'You are not authorized to access this resource!'}), 403
     try:
-      booking = Bookings.query.filter_by(booking_id=booking_id).first()
+      booking = Bookings.query.filter_by(booking_user_id=user_id).first()
       db.session.delete(booking)
       db.session.commit()
       return jsonify({'status': 'success', 'message': 'Booking deleted successfully!'}), 200
@@ -496,7 +524,7 @@ def update_booking(booking_id):
 @app.route('/api/users', methods=['GET','POST'])
 @auth_required("token")
 @roles_required('admin')
-def user():
+def user_info():
   if request.method == 'GET':
     #returns all the users
     try:
@@ -517,7 +545,12 @@ def update_user(user_id):
   #get a user
   if request.method == 'GET':
     user = User.query.filter_by(id=user_id).first()
-    return jsonify({'status': 'success', 'message': 'User fetched successfully!', 'user': {'id': user.id, 'user_name': user.user_name, 'email': user.email, 'password': user.password}}), 200
+    user_roles = user.roles
+    roles_list = []
+    for role in user_roles:
+      roles_list.append({'id': role.id, 'name': role.name, 'description': role.description, 'permissions': role.permissions})
+
+    return jsonify({'status': 'success', 'message': 'User fetched successfully!', 'user': {'id': user.id, 'user_name': user.user_name, 'email': user.email, 'user_role': roles_list}}), 200
   
   #update a user
   if request.method == 'PUT':
@@ -546,11 +579,27 @@ def update_user(user_id):
     except Exception as e:
       print(e)
       return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+#get current user's role
+@app.route('/api/user/roles', methods=['GET'])
+@auth_required("token")
+def user_roles():
+  if request.method == 'GET':
+    try:
+      user = User.query.filter_by(id=current_user.id).first()
+      user_roles = user.roles
+      roles_list = []
+      for role in user_roles:
+        roles_list.append({'id': role.id, 'name': role.name, 'description': role.description, 'permissions': role.permissions})
+      return jsonify({'status': 'success', 'message': 'User fetched successfully!', 'user_role': roles_list}), 200
+    except Exception as e:
+      print(e)
+      return jsonify({'status': 'error', 'message': str(e)}, 500)
 
 #Search for a show
-@app.route('/api/search/shows', methods=['GET'])
+@app.route('/api/search/shows', methods=['POST'])
 def search():
-  if request.method == 'GET':
+  if request.method == 'POST':
     try:
       response = request.get_json()
       search_query = response['search_query']
@@ -568,59 +617,10 @@ def search():
 #Sample request for search
 # {"search_query": "Avengers"}
 
-#search a show with show time
-@app.route('/api/search/shows-by-time', methods=['GET', 'POST'])
-def search_by_time():
-  if request.method == 'POST':
-    try:
-      response = request.get_json()
-      start_time = datetime.strptime(response['start_time'], '%I:%M %p').time()
-      end_time = datetime.strptime(response['end_time'], '%I:%M %p').time()
-      # find shwos with start time or end time that falls between the given time
-      shows = Show.query.all()
-      shows_list = []
-      for show in shows:
-        datetime_start = datetime.strptime(show.show_starting_time, '%I:%M %p').time()
-        datetime_end = datetime.strptime(show.show_ending_time, '%I:%M %p').time()
-        
-        show_dict = {
-        "show_id": show.show_id,
-        "show_name": show.show_name,
-        "show_rating": show.show_rating,
-        "show_price": show.show_price,
-        "show_starting_time": datetime_start,
-        "show_ending_time": datetime_end,
-        "show_tags": show.show_tags,
-        "show_img": show.show_img,
-        "show_theatre": show.show_theatre
-        }
-        shows_list.append(show_dict)
-
-      filtered_shows = []
-
-      for show in shows_list:
-        if show["show_starting_time"] >= start_time and show["show_ending_time"] <= end_time:
-          filtered_shows.append(show)
-
-      #making the filtered_shows json serializable
-      for show in filtered_shows:
-        show["show_starting_time"] = show["show_starting_time"].strftime("%I:%M %p")
-        show["show_ending_time"] = show["show_ending_time"].strftime("%I:%M %p")
-
-      return jsonify({'status': 'success', 'message': 'Shows fetched successfully!', 'shows': filtered_shows}), 200
-    except Exception as e:
-      print(e)
-      return jsonify({'status': 'error', 'message': str(e)}), 500
-    
-
-#Sample request body for search by time
-# {"start_time": "10:00 AM", "end_time": "12:00 PM"}
-
-
 #Search for a theatre
-@app.route('/api/search/theatres', methods=['GET'])
-def search_venue():
-  if request.method == 'GET':
+@app.route('/api/search/theatres', methods=['POST'])
+def search_theatre():
+  if request.method == 'POST':
     try:
       response = request.get_json()
       search_query = response['search_query']
@@ -635,10 +635,31 @@ def search_venue():
       print(e)
       return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+
+
+#booking details by show
+@app.route('/api/bookings/show/<int:show_id>', methods=['GET'])
+@auth_required("token")
+def booking_details(show_id):
+  if request.method == 'GET':
+    try:
+      bookings = Bookings.query.filter_by(booking_show_id=show_id).all()
+      total_bookings = db.session.query(db.func.sum(Bookings.num_bookings)).\
+                filter(Bookings.booking_show_id == show_id).scalar() or 0
+      bookings_list = []
+      for booking in bookings:
+        bookings_list.append({'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id})
+      return jsonify({'status': 'success', 'message': 'Bookings fetched successfully!', 'bookings': bookings_list, 'total_bookings':total_bookings}), 200
+    except Exception as e:
+      print(e)
+      return jsonify({'status': 'error', 'message': str(e)}), 500
+
 #Sample request for searching venues
 # {"search_query": "PVR"}
 
 
 
 if __name__ == '__main__':
-   app.run()
+  # set port and debug mode from .env
+  app.run(debug=True, port=8080)

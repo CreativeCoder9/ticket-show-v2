@@ -1,7 +1,6 @@
 const show = {
     template: 
     `<div>
-
     <nav class="navbar navbar-light navbar-expand-md fixed-top navbar-shrink py-3" id="mainNav">
     <div class="container">
         <img src="../static/images/Ticket%20Show%20Logo.png" width="194" height="66">
