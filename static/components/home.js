@@ -67,6 +67,7 @@ const home = {
                               No Show Found!
                             </div>
                             <div class="row mt-4 align-items-center justify-content-center">
+                            <h6 class="text-center fw-bold">Search result: Theatres!</h6>
                             <div v-for="theatre in searchedTheatres" :key="theatre.theatre_id" class="card col-5 mx-1 align-items-center" :style="{ backgroundImage: 'url(' + theatre.theatre_img + ')', backgroundSize: 'cover' }">
                             <div class="card-body">
                                 <h6 class="card-title fw-bold"><router-link :to="'/theatres/' + theatre.theatre_id" data-bs-dismiss="modal" aria-label="Close">{{ theatre.theatre_name }}</router-link></h6>
@@ -87,7 +88,7 @@ const home = {
             <div class="col-12 col-lg-10 mx-auto">
                 <div class="text-center position-relative">
                     <!--                       <img class="img-fluid" src="../static/images/home-ticket%20-%20Edited.png" style="width: 800px;"> -->
-                    <lottie-player src="https://assets9.lottiefiles.com/packages/lf20_j1adxtyb.json"  background="transparent"  speed="0.8"  style="width: 700px;margin:auto;"  loop  autoplay></lottie-player>
+                    <lottie-player src="https://assets9.lottiefiles.com/packages/lf20_j1adxtyb.json"  background="transparent"  speed="0.8"  style="width: 100%;margin:auto;"  loop  autoplay></lottie-player>
                 </div>
             </div>
         </div>
@@ -99,7 +100,7 @@ const home = {
     <h2 class="text-center underline">Top Shows</h2>
     <div class="row mt-4 d-flex justify-content-center">
       <!-- Show cards -->
-      <div v-for="show in shows" :key="show.show_id" class="card col-3 m-3">
+      <div v-for="show in shows" :key="show.show_id" class="card col-sm-12 col-md-3 m-3">
       <img :src="show.show_img" class="card-img-top shadow" style="margin-bottom:10px">
         <div class="card-body">
           <span class="card-title fw-bold">{{ show.show_name }}, </span
@@ -118,7 +119,7 @@ const home = {
     <h2 class="text-center underline">All Theatres</h2>
     <div class="row mt-4 align-items-center d-flex justify-content-center">
       <!-- Theatre cards -->
-      <div v-for="theatre in theatres" :key="theatre.theatre_id" class="card col-3 mx-1 align-items-center" :style="{ backgroundImage: 'url(' + theatre.theatre_img + ')', backgroundSize: 'cover' }">
+      <div v-for="theatre in theatres" :key="theatre.theatre_id" class="card m-2 col-5 col-md-3 mx-1 align-items-center" :style="{ backgroundImage: 'url(' + theatre.theatre_img + ')', backgroundSize: 'cover' }">
       <div class="card-body">
           <h6 class="card-title fw-bold"><router-link :to="'/theatres/' + theatre.theatre_id">{{ theatre.theatre_name }}</router-link></h6>
         </div>

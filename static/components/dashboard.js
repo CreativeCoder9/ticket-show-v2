@@ -28,13 +28,22 @@ const dashboard = {
         </div>
       </div>
       <div v-if="theatres && theatres.length > 0">
+      <form class="d-flex justify-content-center flex-wrap" action="" @submit.prevent="filter"  method="post">
+      <div class="form-group">
+         <input style="width: 315.594px;" required name="start_time" type="time" class= "form-control" id="showStartingTime" v-model="start_time">
+       </div>
+       <div class="form-group">
+         <input style="width: 315.594px;" required name="end_time" type="time" class= "form-control" id="showEndingTime" v-model="end_time">
+       </div>
+       <div class="shadow-md mt-2"><button class="btn btn-primary" type="submit">Filter by time</button></div>
+      </form>
         <div v-for="theatre in theatres" :key="theatre.id" class="row pt-4 mt-2 mx-auto shadow d-flex justify-content-center pb-5 mb-5" :style="{ backgroundImage: 'url(' + theatre.theatre_img + ')'}">
           <!-- ... Theatre details ... -->
           {{theatre.theatre_name}}, 📌Location: {{theatre.theatre_location}}
           <hr>
           <div v-if="theatre.shows && theatre.shows.length > 0" class="row">
 
-          <div v-for="show in theatre.shows" :key="show.show_id" class="card col-3 m-3">
+          <div v-for="show in theatre.shows" :key="show.show_id" class="card col-md-3 m-3">
           <img :src="show.show_img" class="card-img-top shadow" style="margin-bottom:10px">
           <div class="card-body">
             <span class="card-title fw-bold">{{ show.show_name }}, </span
@@ -67,10 +76,9 @@ const dashboard = {
     return {
       isLoggedIn: JSON.parse(localStorage.getItem("isLoggedIn")),
       theatres: {},
-      shows: {},
       username: "Guest!",
       start_time: "",
-      start_time: "",
+      end_time: "",
     };
   },
   methods: {
@@ -83,34 +91,6 @@ const dashboard = {
         .then((res) => res.json())
         .then((data) => {
           this.theatres = data["theatres"];
-        })
-        .catch((err) => {
-          console.log(err);
-        });
-    },
-    getShows() {
-      const headers = {
-        Authorization: localStorage.getItem("Authorization"),
-        "Content-Type": "application/json",
-      };
-      fetch("/api/shows", { method: "GET", headers: headers })
-        .then((res) => res.json())
-        .then((data) => {
-          this.shows = data["shows"];
-        })
-        .catch((err) => {
-          console.log(err);
-        });
-    },
-    showsByTime(start_time, end_time) {
-      const headers = {
-        Authorization: localStorage.getItem("Authorization"),
-        "Content-Type": "application/json",
-      };
-      fetch("/api/filter/theatres/time", { method: "GET", headers: headers })
-        .then((res) => res.json())
-        .then((data) => {
-          this.shows = data["shows"];
         })
         .catch((err) => {
           console.log(err);
@@ -132,16 +112,18 @@ const dashboard = {
         });
     },
     filter() {
-      this.start_time = document.getElementById("start_time").value;
-      this.start_time = document.getElementById("start_time").value;
+      // this.start_time
       console.log(this.start_time);
-      console.log(this.start_time);
-      this.showsByTime(this.start_time, this.start_time);
+      console.log(this.end_time);
+      this.theatres.forEach(theatre => {
+        theatre.shows = theatre.shows.filter(show => show.show_starting_time >= this.start_time && show.show_ending_time <= this.end_time);
+      })
+      
+      console.log(this.shows);
     }
   },
   created() {
     this.getTheatres();
-    this.getShows();
     this.getUserDetails();
     if (localStorage.getItem('Authorization') != null) {
       localStorage.setItem('isLoggedIn', true);

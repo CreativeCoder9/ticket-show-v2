@@ -40,12 +40,12 @@ const updateShow = {
           <input v-model="updatedShow.show_starting_time" type="time" class="form-control" id="show_starting_time">
         </div>
         <div class="form-group">
-            <input name="poster" type="file" class= "form-control" id="banner" @change="handleImageUpload">
-            <small>Upload a portait poster of the show</small>
-        </div>
-        <div class="form-group">
           <label for="showEndingTime">Show ending time</label>
           <input v-model="updatedShow.show_ending_time" type="time" class="form-control" id="show_ending_time">
+        </div>
+        <div class="form-group">
+            <input name="poster" type="file" class= "form-control" id="banner" @change="handleImageUpload">
+            <small>Upload a portait poster of the show</small>
         </div>
         <div class="form-group m-2">
           <label for="theatre">Theatre</label>

@@ -13,6 +13,7 @@ app = Flask(__name__)
 # Variables & Data
 error_msg = "Unexpected error occurred!"
 success_msg = "Process completed successfully!"
+trending_queries = []
 
 # Custom unauthorized handler
 def unauthorized_handler():
@@ -603,6 +604,7 @@ def search():
     try:
       response = request.get_json()
       search_query = response['search_query']
+      trending_queries.append(search_query)
       shows = Show.query.filter(
       (Show.show_name.like(f"%{search_query}%"))
       | (Show.show_tags.like(f"%{search_query}%"))).all()
@@ -635,31 +637,79 @@ def search_theatre():
       print(e)
       return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
-
-
-#booking details by show
-@app.route('/api/bookings/show/<int:show_id>', methods=['GET'])
-@auth_required("token")
-def booking_details(show_id):
-  if request.method == 'GET':
+#filter shows by time
+@app.route('/api/shows/filter', methods=['POST'])
+def filter_shows():
+  if request.method == 'POST':
     try:
-      bookings = Bookings.query.filter_by(booking_show_id=show_id).all()
-      total_bookings = db.session.query(db.func.sum(Bookings.num_bookings)).\
-                filter(Bookings.booking_show_id == show_id).scalar() or 0
-      bookings_list = []
-      for booking in bookings:
-        bookings_list.append({'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id})
-      return jsonify({'status': 'success', 'message': 'Bookings fetched successfully!', 'bookings': bookings_list, 'total_bookings':total_bookings}), 200
+      response = request.get_json()
+      show_starting_time = response['show_starting_time']
+      show_ending_time = response['show_ending_time']
+      shows = Show.query.filter(
+      (Show.show_starting_time >= show_starting_time)
+      & (Show.show_ending_time <= show_ending_time)).all()
+      shows_list = []
+      for show in shows:
+        shows_list.append({'show_id': show.show_id, 'show_name': show.show_name, 'show_rating': show.show_rating, 'show_price': show.show_price, 'show_starting_time': show.show_starting_time, 'show_ending_time': show.show_ending_time, 'show_tags': show.show_tags, 'show_img': show.show_img, 'show_theatre': show.show_theatre})
+      return jsonify({'status': 'success', 'message': 'Shows fetched successfully!', 'shows': shows_list}), 200
     except Exception as e:
       print(e)
       return jsonify({'status': 'error', 'message': str(e)}), 500
 
-#Sample request for searching venues
-# {"search_query": "PVR"}
+#Sample request for filter
+# {"show_starting_time": "10:00 AM", "show_ending_time": "12:00 PM"}
+
+#Generate statistics for every theatre with trending shows based on the no of bookings.
+@app.route('/api/stats', methods=['GET'])
+# @auth_required("token")
+def stats():
+  if request.method == 'GET':
+    try:
+      #theatre with most bookings
+      theatre_bookings = db.session.query(Bookings.booking_show_id, db.func.sum(Bookings.num_bookings)).group_by(Bookings.booking_show_id).all()
+      print(theatre_bookings)
+      #show with highest bookings
+      top_show = Show.query.get_or_404(theatre_bookings[0][0])
+      top_show_theatre = Theatre.query.get_or_404(top_show.show_theatre)
+      top_show_name = top_show.show_name
+      top_show_theatre_name = top_show_theatre.theatre_name
+      top_show_bookings = theatre_bookings[0][1]
+
+      #theatre with highest revenue
+      theatre_revenue = db.session.query(Bookings.booking_show_id, db.func.sum(Bookings.num_bookings * Show.show_price)).group_by(Bookings.booking_show_id).all()
+      print(theatre_revenue)
+      top_revenue_show = Show.query.get_or_404(theatre_revenue[0][0])
+      top_revenue_show_theatre = Theatre.query.get_or_404(top_revenue_show.show_theatre)
+      top_revenue_show_name = top_revenue_show.show_name
+      top_revenue_show_theatre_name = top_revenue_show_theatre.theatre_name
+      top_revenue = theatre_revenue[0][1]
+
+      #theatre with highest ticket price
+      theatre_price = db.session.query(Show.show_theatre, db.func.max(Show.show_price)).group_by(Show.show_theatre).all()
+      print(theatre_price)
+      top_price_theatre = Theatre.query.get_or_404(theatre_price[0][0])
+      top_price_theatre_name = top_price_theatre.theatre_name
+      top_price = theatre_price[0][1]
+      show = Show.query.get_or_404(theatre_price[0][0])
+      top_price_show = show.show_name
+
+      #get the timestamps of bookings from the data insertion time into the db
+      bookings = Bookings.query.all()
+      bookings_list = []
+      
+  
+
+      #10 trending queries
+      trending_queries_list = trending_queries[-10:]
+      return jsonify({'status': 'success', 'message': 'Stats fetched successfully!', 'top_show': {'top_show_name': top_show_name, 'top_show_theatre_name': top_show_theatre_name, 'top_show_bookings': top_show_bookings}, 'top_revenue_show': {'top_revenue_show_name': top_revenue_show_name, 'top_revenue_show_theatre_name': top_revenue_show_theatre_name, 'top_revenue': top_revenue}, 'top_price_theatre': {'top_price_theatre_name': top_price_theatre_name, 'top_price': top_price, 'top_price_show':top_price_show}, 'trending_queries': trending_queries_list}), 200
+
+      
+    except Exception as e:
+      print(e)
+      return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 
 if __name__ == '__main__':
   # set port and debug mode from .env
-  app.run(debug=True, port=8080)
+  app.run(debug=True, port=5000)
