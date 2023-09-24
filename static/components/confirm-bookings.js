@@ -70,7 +70,7 @@ const confirmBooking = {
 
     return {
       isLoggedIn: JSON.parse(localStorage.getItem('isLoggedIn')),
-      numBookings: 0,
+      numBookings: 1,
       availableSeats: -1,
       show: {
         show_id: '',

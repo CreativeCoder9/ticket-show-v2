@@ -17,6 +17,8 @@ const admin = {
     </div>
     </nav>
 
+    
+
     <section id="theatres" class="mb-5 pb-5 min-vh-100" style="margin-top:150px;">
     <div id="add-show" v-if="!theatres.length">
     <div class="container mt-5 pt-5">
@@ -33,6 +35,57 @@ const admin = {
       </div>
     </div>
     </div>
+    <div v-else>
+    <section id="statistics" class="card" style="margin-top:150px; margin-bottom:20px;">
+    <div class="container">
+      <div class="card-header">
+      <h6>Today's date: {{ date }}</h6>
+      </div>
+      <div v-if="stats.top_booked_show_bookings > 0" class="card-body">
+        <h1 class="sw-semi-bold">Good Day, Admin!</h1>
+        <p>Here are some statistics for you based on last 7 days performance!</p>
+        <div class="row">
+          <div class="col-6 card">
+            <div class="card-body">
+              <h6 class="card-title">Total Bookings</h6>
+              <h1 class="card-text">{{ stats.total_tickets_booked }}</h1>
+            </div>
+          </div>
+          <div class="col-6 card">
+            <div class="card-body">
+              <h6 class="card-title">Total Revenue</h6>
+              <h1 class="card-text">₹{{ stats.total_revenue }}</h1>
+            </div>
+          </div>
+          <div class="col-4 card">
+            <div class="card-body">
+              <h6 class="card-title">Trending queries</h6>
+              <span v-if="stats.trending_queries.length > 0" v-for="query in stats.trending_queries" class="badge rounded-pill bg-warning text-dark">{{ query }}</span>
+              <span v-else>No trending queries found!</span>
+            </div>
+          </div>
+          <div class="col-4 card">
+            <div class="card-body">
+              <h6 class="card-title">Trending shows</h6>
+              <span v-if="stats.trending_shows.length > 0" v-for="show in stats.trending_shows" class="badge rounded-pill bg-primary text-light">{{ show.show_name }}, {{show.theatre_name}}</span>
+              <span v-else>No trending shows found!</span>
+            </div>
+          </div>
+          <div class="col-4 card">
+            <div class="card-body">
+              <h6 class="card-title">Top booked show</h6>
+              <h1 class="card-text">{{ stats.top_booked_show_name }}</h1>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-else class="card-body">
+        <h1 class="sw-semi-bold">Good Day, Admin!</h1>
+        <p class="card-text">No bookings found, so no stats :)</p>
+      </div>
+    </div>
+  </section>
+  </div>
     <h2 class="text-center underline" v-if="theatres.length">Theatre Info</h2>
     <div v-for="theatre in theatres" :key="theatre.id" class="row mt-4 align-items-start pt-3">
       <!-- Theatre column -->
@@ -47,6 +100,9 @@ const admin = {
           </li>
           <li class="list-group-item">
             <a class="btn btn-danger" href="#" @click.prevent="deleteTheatre(theatre.theatre_id)">Delete it!</a>
+          </li>
+          <li class="list-group-item">
+            <a class="btn btn-primary" href="#" @click.prevent="generateReport(theatre.theatre_id)">Export!</a>
           </li>
         </ul>
       </div>
@@ -86,8 +142,10 @@ const admin = {
   data: function () {
     return {
       isLoggedIn: JSON.parse(localStorage.getItem("isLoggedIn")),
+      date: new Date().toLocaleDateString(),
       theatres: [],
       shows: [],
+      stats: {},
     };
   },
   methods: {
@@ -191,6 +249,34 @@ const admin = {
         alert("You have cancelled the operation!");
       }
     },
+    async generateReport(theatre_id) {
+        Response = await fetch("/api/theatres/" + theatre_id + "/report", { method: "GET" });
+        const data = await Response.json();
+        console.log(data.report_url);
+        const link = await data.report_url;
+
+        var anchor = document.createElement('a');
+          anchor.style.display = 'none';
+          anchor.href = link;
+          anchor.setAttribute('download', '');
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+    },
+    getStats() {
+      const headers = {
+        Authorization: localStorage.getItem("Authorization"),
+        "Content-Type": "application/json",
+      };
+      fetch("/api/stats", { method: "GET", headers: headers })
+        .then((res) => res.json())
+        .then((data) => {
+          this.stats = data;
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    },
     updateTheatre(id) {
       var userResponse = confirm("Do you want to proceed?");
       if (userResponse) {
@@ -221,6 +307,7 @@ const admin = {
   },
   created() {
     this.getTheatres();
+    this.getStats();
     if (localStorage.getItem('Authorization') != null) {
       localStorage.setItem('isLoggedIn', true);
     }

@@ -24,8 +24,8 @@
           color:#A37E44;
           text-decoration:none;
         }
-        h1 {
-        font-family: 'Raleway';
+        h1, h2, h3, h4, h5, h6 {
+          font-family: 'Righteous', cursive;
       }
         .card {
           box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
@@ -45,16 +45,15 @@
         .btn a {
           color: white !important;
         }
+        p {
+          font-family: 'Raleway';
+        }
     </style>  
 
   </head>
   <body>
     <!-- root element -->
     <div id="app" class="container">
-      <router-link to="/"> Home </router-link>
-      <router-link to="/profile/1"> Profile </router-link>
-      <router-link to="/login" style="float: right"> Login </router-link>
-
       <router-view style="margin-top: 50px">
       </router-view>
       

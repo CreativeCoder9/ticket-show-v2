@@ -1,0 +1,2 @@
+theatre_id,theatre_name,theatre_location,theatre_capacity,theatre_img,shows
+2,Nandan,Kolkata,350,http://127.0.0.1:5000/static/uploads/kolkata.jpg,[]

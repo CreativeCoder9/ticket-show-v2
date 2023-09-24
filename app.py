@@ -1,4 +1,5 @@
-import os, random, requests
+import os, random, requests, shutil
+import pandas as pd
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session
@@ -6,6 +7,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, roles_required, auth_required, hash_password, permissions_required, current_user
 from flask_security.models import fsqla_v3 as fsqla
 from flask_caching import Cache
+from flask_mail import Mail, Message
+from celery import Celery
+# from workers import celery
+# import workers
+# import tasks
+import pytz
+
 
 
 app = Flask(__name__)
@@ -14,6 +22,9 @@ app = Flask(__name__)
 error_msg = "Unexpected error occurred!"
 success_msg = "Process completed successfully!"
 trending_queries = []
+ist_timezone = pytz.timezone('Asia/Kolkata')
+ind_time = datetime.now(ist_timezone).strftime('%Y-%m-%d %H:%M:%S.%f')
+
 
 # Custom unauthorized handler
 def unauthorized_handler():
@@ -37,38 +48,69 @@ def allowed_file(filename):
 # Custom cache key
 def custom_cache_key():
     method = request.method
+    if method != 'GET':
+       # Don't cache POST, PUT, DELETE requests
+       method = str(datetime.now())
+    auth_token = request.headers.get('Authorization')
     path = request.path
     query_string = request.query_string.decode('utf-8')
-    return f'{method}:{path}?{query_string}'
+    return str(f'{method}:{auth_token}:{path}?{query_string}')
 
 # App config
 app.config['STATIC_FOLDER'] = STATIC_FOLDER
+app.config['TEMPLATES_FOLDER'] = 'templates'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ticketshow.db'
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", 'pf9Wkove4IKEAXvy-cQkeDPhv9Cb3Ag-wyJILbq_dFw')
 app.config['DEBUG'] = True
 app.config['SECURITY_PASSWORD_SALT'] = os.environ.get("SECURITY_PASSWORD_SALT", '146585145368132386173505678016728509634')
 app.config['CACHE_TYPE'] = "RedisCache"
-app.config['CACHE_DEFAULT_TIMEOUT'] = 60
-app.config['CACHE_REDIS_HOST'] = "redis-18499.c264.ap-south-1-1.ec2.cloud.redislabs.com"
-app.config['CACHE_REDIS_PORT'] = 18499
-app.config['CACHE_REDIS_PASSWORD'] ="10HWC9CukcVzonjPMQGNdoTfLY9GIApy"
+app.config['CACHE_DEFAULT_TIMEOUT'] = 10
+app.config['CACHE_REDIS_HOST'] = "redis-17471.c212.ap-south-1-1.ec2.cloud.redislabs.com"
+app.config['CACHE_REDIS_PORT'] = 17471
+app.config['CACHE_REDIS_PASSWORD'] ="KfA6bc7JwHLWwirIiGDGb6rsz5hbg8oC"
 app.config['WTF_CSRF_ENABLED'] = False
 app.config['SECURITY_TOKEN_AUTHENTICATION_HEADER'] = 'Authorization'
 # app.config['SECURITY_TOKEN_MAX_AGE'] = 86400
 app.config['SECURITY_URL_PREFIX'] = '/auth'
-app.config['CACHE_KEY_PREFIX'] = custom_cache_key
+app.config['CACHE_KEY_PREFIX'] = str(custom_cache_key)
 # app.config['REMEMBER_COOKIE_DURATION'] = timedelta(seconds=0)
 #set seession expire in 1 second
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=1)
+# Configure Flask-Mail
+app.config['MAIL_SERVER'] = 'smtp.freesmtpservers.com'
+app.config['MAIL_PORT'] = 25
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_DEBUG'] = True
+#celery config
+app.config['CELERY_BROKER_URL'] = 'redis://:KfA6bc7JwHLWwirIiGDGb6rsz5hbg8oC@redis-17471.c212.ap-south-1-1.ec2.cloud.redislabs.com:17471'
+app.config['CELERY_RESULT_BACKEND'] = 'redis://:KfA6bc7JwHLWwirIiGDGb6rsz5hbg8oC@redis-17471.c212.ap-south-1-1.ec2.cloud.redislabs.com:17471'
 
+#https://www.wpoven.com/tools/free-smtp-server-for-testing
+# app.config['MAIL_USERNAME'] = 'your_email@example.com'
+# app.config['MAIL_PASSWORD'] = 'your_email_password'
 
+#celery workers & configurations
+celery = Celery("app")
+celery = celery
+celery.conf.update(
+  broker_url=app.config['CELERY_BROKER_URL'],
+  result_backend=app.config['CELERY_RESULT_BACKEND']
+)
 
+# creating subclass of task with application context
+class ContextTask(celery.Task):
+  def __call__(self, *args, **kwargs):
+    with app.app_context():
+      return self.run(*args, **kwargs)
+    
+celery.Task = ContextTask
 
-
-#initializing Database & Caching
+#initializing Database, Caching, mail & task queue
 db = SQLAlchemy(app)
 cache = Cache(app)
+mail = Mail(app)
 
 
 # Define models
@@ -131,6 +173,8 @@ class Bookings(db.Model):
   booking_show_id = db.Column(db.Integer,
                               db.ForeignKey('show.show_id'),
                               nullable=False)
+  booked_at = db.Column(db.TIMESTAMP, default=datetime.now(ist_timezone), nullable=False)
+
   
 
 
@@ -186,17 +230,86 @@ def upload_and_geturl():
     return jsonify({'status': 'success', 'message': 'Send a POST request with file to upload!'}), 200
   
 
+# Celery tasks
+@celery.task()
+def task_add(x, y):
+    print(x+y)
+    return x + y
+
+#asynchronously send an html based mail containing all the statistics at the beginning of the month
+@celery.task()
+def admin_report(data):
+  msg = Message('Weekly report for admin!', sender='admin@ticketshow.in', recipients=['admin@ticketshow.in'])
+  msg.html = render_template('admin_report_template.html', stats=data, date=datetime.now())
+  mail.send(msg)
+  return 'report Sent'
+
+# asynchronously generate report for each user
+@celery.task()
+def entertainment_report(data):
+  recipients = []
+  recipients.append(data['user_email'])
+  msg = Message('Weekly entertainment report for you!',  sender='admin@ticketshow.in', recipients=recipients)
+  msg.html = render_template('user_report_template.html', stats=data, date=datetime.now())
+  mail.send(msg)
+  return 'report Sent'
+
+# asynchronously Generate CSV
+@celery.task()
+def generate_csv(theatre_id):
+    try:
+        # Retrieve theatre details from the database
+        theatre = Theatre.query.get_or_404(theatre_id)
+        shows = Show.query.filter_by(show_theatre=theatre_id).all()
+        shows_list = []
+        for show in shows:
+            shows_list.append({'show_id': show.show_id, 'show_name': show.show_name, 'show_rating': show.show_rating, 'show_price': show.show_price, 'show_starting_time': show.show_starting_time, 'show_ending_time': show.show_ending_time, 'show_tags': show.show_tags, 'show_img': show.show_img, 'show_theatre': show.show_theatre})
+
+        # Create a dictionary for theatre details
+        theatre_details = {
+            'theatre_id': theatre.theatre_id,
+            'theatre_name': theatre.theatre_name,
+            'theatre_location': theatre.theatre_location,
+            'theatre_capacity': theatre.theatre_capacity,
+            'theatre_img': theatre.theatre_img,
+            'shows': shows_list
+        }
+
+        # Create a DataFrame from the dictionary
+        df = pd.DataFrame([theatre_details])
+
+        # Define the file path
+        report_filename = f'{theatre_id}_report.csv'
+        save_path = os.path.join('static', 'reports', report_filename)
+
+        # Save the DataFrame to a CSV file
+        df.to_csv(save_path, index=False)
+
+        # Return a JSON response with the report URL
+        report_url = os.path.join(request.url_root, 'static', 'reports', report_filename)
+        
+        return jsonify({'status': 'success', 'message': 'Report generated successfully!', 'report_url': report_url}), 200
+    except Exception as e:
+        # Log the error for debugging purposes
+        print(e)
+        return jsonify({'status': 'error', 'message': 'Failed to generate report'}), 500
+
 
 @app.route('/', methods=['GET','POST'])
+# @cache.cached(timeout=60)
 # @auth_required("token")
 # @cache.memoize(timeout=60)
 # @roles_required('admin')
 # @permissions_required('user-read')
 def home():
-    return render_template('index.html')
+  return render_template('index.html')
+  # job = task_add.delay(1,2)
+  # return jsonify({'status': 'success', 'message': 'Job created successfully!', 'job_id': job.id}), 200
+
 
 # User Registration
 @app.route('/auth/register', methods=['GET','POST'])
+@cache.cached(timeout=5)
 def register():
   if request.method == 'GET':
     #explanation of how to use the api.
@@ -216,12 +329,9 @@ def register():
 #login is provided by flask seurity & Logout process has to be done on the client side as only token based authentication is used.
 
 
-   
-
-
 # Creating and Getting all theatres
 @app.route('/api/theatres', methods=['GET','POST'])
-# @cache.memoize(timeout=60)
+@cache.cached(timeout=5)
 def create_theatre():
     if request.method == 'GET':
       try:
@@ -261,6 +371,7 @@ def create_theatre():
 #update & delete theatre
 @app.route('/api/theatres/<int:theatre_id>', methods=['GET','PUT','DELETE'])
 @auth_required("token")
+@cache.cached(timeout=5)
 def update_theatre(theatre_id):
 
   #returns a theatre with shows list
@@ -311,6 +422,7 @@ def update_theatre(theatre_id):
   
 #Get all shows & Create a show
 @app.route('/api/shows', methods=['GET','POST'])
+@cache.cached(timeout=5)
 def show():
   if request.method == 'GET':
     #returns all the shows
@@ -358,6 +470,7 @@ def show():
 #Get, update & delete a show
 @app.route('/api/shows/<int:show_id>', methods=['GET','PUT','DELETE'])
 @auth_required("token")
+@cache.cached(timeout=60)
 def update_show(show_id):
   #returns a show
   if request.method == 'GET':
@@ -410,18 +523,18 @@ def update_show(show_id):
 #Get all bookings & Create a booking
 @app.route('/api/bookings', methods=['GET','POST'])
 @auth_required("token")
+@cache.cached(timeout=5)
 def booking():
   if request.method == 'GET':
-    if not current_user.has_role('admin'):
-      return jsonify({'status': 'error', 'message': 'You are not authorized to access this resource!'}), 403
-    #returns all the bookings
     try:
       bookings = Bookings.query.all()
       bookings_list = []
       for booking in bookings:
+        if current_user.id != booking.booking_user_id:
+          continue
         show = Show.query.get_or_404(booking.booking_show_id)
         theatre = Theatre.query.get_or_404(show.show_theatre)
-        bookings_list.append({'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id, 'show_name':show.show_name, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location})
+        bookings_list.append({'booking_id': booking.booking_id,'booked_at':booking.booked_at.strftime("%a, %d %b %Y %H:%M:%S %Z"), 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id, 'show_name':show.show_name, 'theatre_name': theatre.theatre_name, 'theatre_location': theatre.theatre_location})
       return jsonify({'status': 'success', 'message': 'Bookings fetched successfully!', 'bookings': bookings_list}), 200
     except Exception as e:
       print(e)
@@ -477,6 +590,8 @@ def booking():
 
 #Get current logged in user details
 @app.route('/api/user', methods=['GET','POST'])
+@auth_required("token")
+@cache.cached(timeout=60)
 def user_details():
   if request.method == 'GET' and current_user.is_authenticated:
     try:
@@ -492,6 +607,7 @@ def user_details():
 #Get, update & delete bookings by user
 @app.route('/api/bookings/user/<int:user_id>', methods=['GET','DELETE'])
 @auth_required("token")
+@cache.cached()
 def update_booking(user_id):
 
   #returns a user's bookings
@@ -525,6 +641,7 @@ def update_booking(user_id):
 @app.route('/api/users', methods=['GET','POST'])
 @auth_required("token")
 @roles_required('admin')
+@cache.cached(timeout=5)
 def user_info():
   if request.method == 'GET':
     #returns all the users
@@ -542,6 +659,7 @@ def user_info():
 @app.route('/api/users/<int:user_id>', methods=['GET','PUT','DELETE'])
 @auth_required("token")
 @roles_required('admin')
+@cache.cached(timeout=5)
 def update_user(user_id):
   #get a user
   if request.method == 'GET':
@@ -584,6 +702,7 @@ def update_user(user_id):
 #get current user's role
 @app.route('/api/user/roles', methods=['GET'])
 @auth_required("token")
+@cache.cached(timeout=5)
 def user_roles():
   if request.method == 'GET':
     try:
@@ -659,54 +778,138 @@ def filter_shows():
 #Sample request for filter
 # {"show_starting_time": "10:00 AM", "show_ending_time": "12:00 PM"}
 
-#Generate statistics for every theatre with trending shows based on the no of bookings.
-@app.route('/api/stats', methods=['GET'])
-# @auth_required("token")
-def stats():
+#booking details by show
+@app.route('/api/bookings/show/<int:show_id>', methods=['GET'])
+@auth_required("token")
+@cache.memoize(timeout=60)
+def booking_details(show_id):
   if request.method == 'GET':
     try:
-      #theatre with most bookings
-      theatre_bookings = db.session.query(Bookings.booking_show_id, db.func.sum(Bookings.num_bookings)).group_by(Bookings.booking_show_id).all()
-      print(theatre_bookings)
-      #show with highest bookings
-      top_show = Show.query.get_or_404(theatre_bookings[0][0])
-      top_show_theatre = Theatre.query.get_or_404(top_show.show_theatre)
-      top_show_name = top_show.show_name
-      top_show_theatre_name = top_show_theatre.theatre_name
-      top_show_bookings = theatre_bookings[0][1]
-
-      #theatre with highest revenue
-      theatre_revenue = db.session.query(Bookings.booking_show_id, db.func.sum(Bookings.num_bookings * Show.show_price)).group_by(Bookings.booking_show_id).all()
-      print(theatre_revenue)
-      top_revenue_show = Show.query.get_or_404(theatre_revenue[0][0])
-      top_revenue_show_theatre = Theatre.query.get_or_404(top_revenue_show.show_theatre)
-      top_revenue_show_name = top_revenue_show.show_name
-      top_revenue_show_theatre_name = top_revenue_show_theatre.theatre_name
-      top_revenue = theatre_revenue[0][1]
-
-      #theatre with highest ticket price
-      theatre_price = db.session.query(Show.show_theatre, db.func.max(Show.show_price)).group_by(Show.show_theatre).all()
-      print(theatre_price)
-      top_price_theatre = Theatre.query.get_or_404(theatre_price[0][0])
-      top_price_theatre_name = top_price_theatre.theatre_name
-      top_price = theatre_price[0][1]
-      show = Show.query.get_or_404(theatre_price[0][0])
-      top_price_show = show.show_name
-
-      #get the timestamps of bookings from the data insertion time into the db
-      bookings = Bookings.query.all()
+      bookings = Bookings.query.filter_by(booking_show_id=show_id).all()
+      total_bookings = db.session.query(db.func.sum(Bookings.num_bookings)).\
+                filter(Bookings.booking_show_id == show_id).scalar() or 0
       bookings_list = []
-      
-  
-
-      #10 trending queries
-      trending_queries_list = trending_queries[-10:]
-      return jsonify({'status': 'success', 'message': 'Stats fetched successfully!', 'top_show': {'top_show_name': top_show_name, 'top_show_theatre_name': top_show_theatre_name, 'top_show_bookings': top_show_bookings}, 'top_revenue_show': {'top_revenue_show_name': top_revenue_show_name, 'top_revenue_show_theatre_name': top_revenue_show_theatre_name, 'top_revenue': top_revenue}, 'top_price_theatre': {'top_price_theatre_name': top_price_theatre_name, 'top_price': top_price, 'top_price_show':top_price_show}, 'trending_queries': trending_queries_list}), 200
-
-      
+      for booking in bookings:
+        bookings_list.append({'booking_id': booking.booking_id, 'booking_user_id': booking.booking_user_id, 'num_bookings': booking.num_bookings, 'booking_show_id': booking.booking_show_id})
+      return jsonify({'status': 'success', 'message': 'Bookings fetched successfully!', 'bookings': bookings_list, 'total_bookings':total_bookings}), 200
     except Exception as e:
       print(e)
       return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+#Statistics for admin
+@app.route('/api/stats', methods=['GET'])
+@cache.memoize(timeout=60)
+def stats():
+  if request.method == 'GET':
+    try:
+      #theatre with highest revenue generated last week
+      last_week_bookings = Bookings.query.filter(Bookings.booked_at >= (datetime.now() - timedelta(days=7))).all()
+      # print(last_week_bookings)
+
+      #Total tickets booked last week
+      total_tickets_booked = db.session.query(db.func.sum(Bookings.num_bookings)).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=7))).scalar() or 0
+      total_revenue = db.session.query(db.func.sum(Show.show_price * Bookings.num_bookings)).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=7))).scalar() or 0
+
+      #Serializing tota
+      
+      #Theatre with highest revenue generated
+      theatre_revenue = db.session.query(Show.show_theatre, db.func.sum(Show.show_price)).group_by(Show.show_theatre).all()
+      print(theatre_revenue)
+      top_revenue_theatre = Theatre.query.get_or_404(theatre_revenue[0][0])
+      top_revenue_theatre_name = top_revenue_theatre.theatre_name
+      top_revenue_amount = theatre_revenue[0][1]
+
+      #Highest booked show last week
+      show_bookings = db.session.query(Bookings.booking_show_id, db.func.count(Bookings.booking_show_id)).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=7))).group_by(Bookings.booking_show_id).all()
+      print(show_bookings)
+      top_booked_show = Show.query.get_or_404(show_bookings[0][0])
+      top_booked_show_id = top_booked_show.show_id
+      top_booked_show_name = top_booked_show.show_name
+      top_booked_show_bookings = show_bookings[0][1]
+      top_booked_show_total_tickets_booked = db.session.query(db.func.sum(Bookings.num_bookings)).filter(Bookings.booking_show_id == top_booked_show_id).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=7))).scalar() or 0
+
+
+      #if there are 5 continuous bookings for a show, it is going to be popular
+      last_20_bookings = Bookings.query.order_by(Bookings.booked_at.desc()).limit(20).all()
+      print(last_20_bookings)
+      #check if there are 5 continuous bookings for a show
+      trending_shows = []
+      if len(last_20_bookings) > 5:
+        for i in range(len(last_20_bookings)-5):
+          if last_20_bookings[i].booking_show_id == last_20_bookings[i+1].booking_show_id == last_20_bookings[i+2].booking_show_id == last_20_bookings[i+3].booking_show_id == last_20_bookings[i+4].booking_show_id:
+            show = Show.query.get_or_404(last_20_bookings[i].booking_show_id)
+            theatre = Theatre.query.get_or_404(show.show_theatre)
+            trending_shows.append({'show_name': show.show_name, 'theatre_name': theatre.theatre_name})
+      print(trending_shows)
+
+      #10 trending queries
+      trending_queries_list = trending_queries[-10:]
+
+      data = {'total_tickets_booked': total_tickets_booked, 'total_revenue': total_revenue, 'top_revenue_theatre_name': top_revenue_theatre_name, 'top_revenue_amount': top_revenue_amount, 'top_booked_show_name': top_booked_show_name, 'top_booked_show_bookings': top_booked_show_bookings, 'top_booked_show_total_tickets_booked': top_booked_show_total_tickets_booked, 'trending_shows': trending_shows, 'trending_queries': trending_queries_list}
+      job = tasks.admin_report.delay(data)
+      print(job.id)
+      return jsonify({'status': 'success', 'message': 'Stats fetched successfully!', 'total_tickets_booked': total_tickets_booked, 'total_revenue': total_revenue, 'top_revenue_theatre_name': top_revenue_theatre_name, 'top_revenue_amount': top_revenue_amount, 'top_booked_show_name': top_booked_show_name, 'top_booked_show_bookings': top_booked_show_bookings, 'top_booked_show_total_tickets_booked': top_booked_show_total_tickets_booked, 'trending_shows': trending_shows, 'trending_queries': trending_queries_list}), 200
+    except Exception as e:
+      print(e)
+      return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+#Statistics for each user
+@app.route('/api/stats/user/<int:user_id>', methods=['GET'])
+@cache.memoize(timeout=60)
+def stats_by_user(user_id):
+  if request.method == 'GET':
+    try:
+      #user details
+      user = User.query.filter_by(id=user_id).first()
+      user_name = user.user_name
+      user_email = user.email
+      
+      #Total tickets booked last week
+      total_tickets_booked = db.session.query(db.func.sum(Bookings.num_bookings)).filter(Bookings.booking_user_id == user_id).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=20))).scalar() or 0
+      total_money_spent = db.session.query(db.func.sum(Show.show_price * Bookings.num_bookings)).filter(Bookings.booking_user_id == user_id).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=30))).scalar() or 0
+
+      
+      #Theatre with highest money spent
+      theatre_revenue = db.session.query(Show.show_theatre, db.func.sum(Show.show_price)).filter(Bookings.booking_user_id == user_id).group_by(Show.show_theatre).all()
+      print(theatre_revenue)
+      top_revenue_theatre = Theatre.query.get_or_404(theatre_revenue[0][0])
+      favourite_theatre = top_revenue_theatre.theatre_name
+      money_spent_on_favourite_theatre = theatre_revenue[0][1]
+
+      #Highest booked show last week
+      show_bookings = db.session.query(Bookings.booking_show_id, db.func.count(Bookings.booking_show_id)).filter(Bookings.booking_user_id == user_id).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=30))).group_by(Bookings.booking_show_id).all()
+      print(show_bookings)
+      top_booked_show = Show.query.get_or_404(show_bookings[0][0])
+      top_booked_show_id = top_booked_show.show_id
+      top_booked_show_name = top_booked_show.show_name
+      top_booked_show_bookings = show_bookings[0][1]
+      top_booked_show_total_tickets_booked = db.session.query(db.func.sum(Bookings.num_bookings)).filter(Bookings.booking_show_id == top_booked_show_id).filter(Bookings.booked_at >= (datetime.now() - timedelta(days=30))).scalar() or 0
+      
+      data = {'user_name': user_name, 'user_email': user_email, 'total_tickets_booked': total_tickets_booked, 'total_money_spent': total_money_spent, 'favourite_theatre': favourite_theatre, 'money_spent_on_favourite_theatre': money_spent_on_favourite_theatre, 'top_booked_show_name': top_booked_show_name, 'top_booked_show_bookings': top_booked_show_bookings, 'top_booked_show_total_tickets_booked': top_booked_show_total_tickets_booked}
+      job = tasks.user_report.delay(data)
+      print(job.id)
+      return jsonify({'status': 'success', 'message': 'Stats fetched successfully!', 'user_name': user_name, 'user_email': user_email, 'total_tickets_booked': total_tickets_booked, 'total_money_spent': total_money_spent, 'favourite_theatre': favourite_theatre, 'money_spent_on_favourite_theatre': money_spent_on_favourite_theatre, 'top_booked_show_name': top_booked_show_name, 'top_booked_show_bookings': top_booked_show_bookings, 'top_booked_show_total_tickets_booked': top_booked_show_total_tickets_booked}), 200
+
+    except Exception as e:
+      print(e)
+      return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+#Theatre report
+@app.route('/api/theatres/<int:theatre_id>/report', methods=['GET'])
+@cache.memoize(timeout=60)
+def generate_report(theatre_id):
+    if request.method == 'GET':
+        try:
+          job = tasks.generate_csv.delay(theatre_id)
+          return jsonify({'status': 'success', 'message': 'Report generated successfully!'}), 200
+        except Exception as e:
+          print(e)
+          return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
 
 
 

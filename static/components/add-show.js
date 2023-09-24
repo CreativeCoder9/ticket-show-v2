@@ -131,6 +131,9 @@ const addShow = {
               .then(res => res.json())
               .then(data => {
                 this.theatres = data['theatres'];
+                if (this.theatres.length == 0) {
+                  alert('No theatre is available to add a show!')
+                } 
               })
               .catch(err => {
                 console.log(err);

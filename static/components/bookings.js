@@ -30,6 +30,7 @@ const bookings = {
   <div v-if="bookings.length > 0" class="row">
     <div v-for="booking in bookings" :key="booking.booking_id" class="col-6 g-0 card">
         <ul class="list-group d-flex align-items-center card-body">
+        <div class="card-footer">{{booking.booked_at}}</div> 
           <li class="list-group-item">
             <span class="fw-bold pl-5">{{ booking.show_name }}, </span>
             <span>{{ booking.theatre_location }} </span>

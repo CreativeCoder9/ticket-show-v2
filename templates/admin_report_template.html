@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TicketShow - Book your show.</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="{{url_for('static', filename='/css/bootstrap.css')}}">
+
+    <!-- fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800&amp;display=swap">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css">
+
+    <!-- Some global custom css -->
+    <style>
+        a{
+          color:#A37E44;
+          text-decoration:none;
+        }
+        button:hover{
+          color:#A37E44;
+          text-decoration:none;
+        }
+        h1, h2, h3, h4, h5, h6 {
+          font-family: 'Righteous', cursive;
+      }
+        .card {
+          box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+          padding-bottom: 30px;
+          padding-top:10px;
+        }
+        .form-group{
+         padding-top:10px;
+         padding-bottom:10px;
+         }
+         .navlinks {
+          padding: 10px;
+        }
+          #footer {
+            color:white;
+          }
+        .btn a {
+          color: white !important;
+        }
+        p {
+          font-family: 'Raleway';
+        }
+    </style>  
+
+  </head>
+
+<body>
+<section id="statistics" class="card" style="margin-top:20px; margin-bottom:20px;">
+    <div class="container mb-5 pb-5 min-vh-100">
+        <div class="card-header">
+            <h6>Today's date: {{ date }}</h6>
+        </div>
+        {% if stats.top_booked_show_bookings > 0 %}
+        <div class="card-body">
+            <h1 class="sw-semi-bold">Good Day, Admin!</h1>
+            <p>Here are some statistics for you based on last 7 days performance!</p>
+            <div class="row">
+                <div class="col-6 card">
+                    <div class="card-body">
+                        <h6 class="card-title">Total Bookings</h6>
+                        <h1 class="card-text">{{ stats.total_tickets_booked }}</h1>
+                    </div>
+                </div>
+                <div class="col-6 card">
+                    <div class="card-body">
+                        <h6 class="card-title">Total Revenue</h6>
+                        <h1 class="card-text">₹{{ stats.total_revenue }}</h1>
+                    </div>
+                </div>
+                <div class="col-4 card">
+                    <div class="card-body">
+                        <h6 class="card-title">Trending queries</h6>
+                        {% if stats.trending_queries|length > 0 %}
+                            {% for query in stats.trending_queries %}
+                                <span class="badge rounded-pill bg-warning text-dark">{{ query }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <p>No trending queries available.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-4 card">
+                    <div class="card-body">
+                        <h6 class="card-title">Trending shows</h6>
+                        {% if stats.trending_shows|length > 0 %}
+                            {% for show in stats.trending_shows %}
+                                <span class="badge rounded-pill bg-primary text-light">{{ show.show_name }}, {{ show.theatre_name }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <p>No trending shows available.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-4 card">
+                    <div class="card-body">
+                        <h6 class="card-title">Top booked show</h6>
+                        <h1 class="card-text">{{ stats.top_booked_show_name }}</h1>
+                        <p>Total Tickets Booked: {{ stats.top_booked_show_total_tickets_booked }}</p>
+                    </div>
+                </div>
+                <div class="col-6 card">
+                    <div class="card-body">
+                        <h6 class="card-title">Top Revenue Show</h6>
+                        <p>Theatre: {{ stats.top_revenue_theatre_name }}</p>
+                        <p>Revenue Amount: ₹{{ stats.top_revenue_amount }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card-body">
+            <h1 class="sw-semi-bold">Good Day, Admin!</h1>
+            <p class="card-text">No bookings found, so no stats :)</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
+</body>
