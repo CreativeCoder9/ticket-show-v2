@@ -190,7 +190,7 @@ with app.app_context():
   try:
     if not user_datastore.find_role("admin"):
       user_datastore.create_role(name='admin', description='Administrator',  permissions={"user-read", "user-write"})
-      admin_user = user_datastore.create_user(user_name='admin', email="admin@ticketshpw.in", password=hash_password("admin"))
+      admin_user = user_datastore.create_user(user_name='admin', email="admin@ticketshow.in", password=hash_password("admin"))
       admin_role=user_datastore.find_role("admin")
       user_datastore.add_role_to_user(admin_user, admin_role)
 
