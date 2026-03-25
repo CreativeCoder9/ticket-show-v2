@@ -65,8 +65,8 @@ A full-stack web application for booking theatre show tickets, built with Flask 
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/CreativeCoder9/mad-2.git
-cd mad-2
+git clone [https://github.com/CreativeCoder9/mad-2.git](https://github.com/CreativeCoder9/ticket-show-v2.git)
+cd ticket-show-v2
 ```
 
 2. Create and activate a virtual environment:
@@ -129,7 +129,7 @@ gunicorn -w 4 -b 0.0.0.0:8000 app:app
 ## Project Structure
 
 ```
-mad-2/
+ticket-show-v2/
 ├── app.py                          # Main Flask application with all routes and models
 ├── requirements.txt                # Python dependencies
 ├── templates/
